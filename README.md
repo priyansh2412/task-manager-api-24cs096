@@ -1,21 +1,24 @@
 # Task Manager REST API
 
-## Practical 4 - Building a RESTful API with Node.js and Express
+## Practical 5 - MongoDB Integration and Schema Design with Mongoose
 
 ### Objective
 
-To design and implement a RESTful backend server with complete CRUD operations using Node.js, Express, middleware, and an in-memory data store.
+To connect a MongoDB database to an Express server and enforce data validation using Mongoose schema.
 
 ## Technologies Used
 
 - Node.js
 - Express.js
-- JavaScript
+- MongoDB
+- MongoDB Compass
+- Mongoose
+- dotenv
 - Postman
 
 ## Installation
 
-Clone the repository and install dependencies:
+Install the required dependencies:
 
 ```bash
 npm install
