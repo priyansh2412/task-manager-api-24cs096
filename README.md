@@ -1,24 +1,42 @@
-# Task Manager REST API
-
-## Practical 5 - MongoDB Integration and Schema Design with Mongoose
+## Practical 6 – Full-Stack Task Manager Integration
 
 ### Objective
 
-To connect a MongoDB database to an Express server and enforce data validation using Mongoose schema.
+Connect the React frontend with the Node.js, Express, and MongoDB backend to perform complete CRUD operations.
 
-## Technologies Used
+### Technologies Used
 
+- React
+- React Router
+- JavaScript
 - Node.js
 - Express.js
 - MongoDB
-- MongoDB Compass
 - Mongoose
-- dotenv
-- Postman
+- REST API
+- Fetch API
+- CORS
 
-## Installation
+### Architecture
 
-Install the required dependencies:
+React Frontend → REST API → Express Backend → Mongoose → MongoDB
+
+### Features
+
+- View tasks from MongoDB
+- Create new tasks
+- Update existing tasks
+- Delete tasks
+- Search/filter tasks
+- Loading state while fetching data
+- Error handling for API operations
+- Retry option when fetching fails
+- Delete confirmation dialog
+- Toast notifications after successful operations
+- Data persistence using MongoDB
+
+### Frontend Setup
 
 ```bash
 npm install
+npm run dev
