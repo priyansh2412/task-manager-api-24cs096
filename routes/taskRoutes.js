@@ -1,114 +1,194 @@
+
 const express = require("express");
 const router = express.Router();
-
+const app = express();
+const Task = require("../models/Task");
+const cache = require("../utils/cache");
 const authenticate = require("../middleware/authMiddleware");
 
+const CACHE_TTL = 60;
 
-let tasks = [
-    {
-        id: 1,
-        title: "Learn Node.js",
-        completed: false
-    }
-];
+const cacheStats = {
+  hits: 0,
+  misses: 0
+};
 
-
-// ==========================
-// GET ALL TASKS
-// ==========================
-
-router.get("/", authenticate, (req, res) => {
-
-    res.status(200).json(tasks);
-
+// Cache statistics endpoint
+router.get("/debug/cache", authenticate, (req, res) => {
+  res.status(200).json({
+    hits: cacheStats.hits,
+    misses: cacheStats.misses,
+    keys: cache.keys(),
+    keyCount: cache.keys().length,
+    ttlSeconds: CACHE_TTL
+  });
 });
 
+// GET all tasks (cached for 60 seconds)
+router.get("/", authenticate, async (req, res) => {
+  try {
+    const cachedTasks = cache.get("all_tasks");
 
-// ==========================
-// CREATE TASK
-// ==========================
-
-router.post("/", authenticate, (req, res) => {
-
-    // Input validation
-    if (!req.body.title) {
-        return res.status(400).json({
-            message: "Task title is required"
-        });
+    if (cachedTasks !== undefined) {
+      cacheStats.hits++;
+      return res.status(200).json(cachedTasks);
     }
 
-    const newTask = {
-        id: tasks.length + 1,
-        title: req.body.title,
-        completed: req.body.completed || false
-    };
+    cacheStats.misses++;
 
-    tasks.push(newTask);
+    const tasks = await Task.find().lean();
 
-    res.status(201).json({
-        message: "Task created successfully",
-        task: newTask
+    cache.set("all_tasks", tasks, CACHE_TTL);
+
+    return res.status(200).json(tasks);
+  } catch (error) {
+    return res.status(500).json({
+      message: "Failed to fetch tasks",
+      error: error.message
     });
-
+  }
 });
 
+// GET one task by MongoDB ID (cached for 60 seconds)
+router.get("/:id", authenticate, async (req, res) => {
+  try {
+    const id = req.params.id;
 
-// ==========================
-// UPDATE TASK
-// ==========================
+    if (!/^[a-fA-F0-9]{24}$/.test(id)) {
+      return res.status(400).json({ message: "Invalid task ID" });
+    }
 
-router.put("/:id", authenticate, (req, res) => {
+    const cacheKey = `task_${id}`;
+    const cachedTask = cache.get(cacheKey);
 
-    const id = parseInt(req.params.id);
+    if (cachedTask !== undefined) {
+      cacheStats.hits++;
+      return res.status(200).json(cachedTask);
+    }
 
-    const task = tasks.find(t => t.id === id);
+    cacheStats.misses++;
+
+    const task = await Task.findById(id).lean();
 
     if (!task) {
-        return res.status(404).json({
-            message: "Task not found"
-        });
+      return res.status(404).json({ message: "Task not found" });
     }
 
-    if (!req.body.title) {
-        return res.status(400).json({
-            message: "Task title is required"
-        });
-    }
+    cache.set(cacheKey, task, CACHE_TTL);
 
-    task.title = req.body.title;
-    task.completed = req.body.completed;
-
-    res.status(200).json({
-        message: "Task updated successfully",
-        task: task
+    return res.status(200).json(task);
+  } catch (error) {
+    return res.status(500).json({
+      message: "Failed to fetch task",
+      error: error.message
     });
-
+  }
 });
 
+// CREATE a task
+router.post("/", authenticate, async (req, res) => {
+  try {
+    const { title, description, completed, priority } = req.body;
 
-// ==========================
-// DELETE TASK
-// ==========================
-
-router.delete("/:id", authenticate, (req, res) => {
-
-    const id = parseInt(req.params.id);
-
-    const index = tasks.findIndex(t => t.id === id);
-
-    if (index === -1) {
-        return res.status(404).json({
-            message: "Task not found"
-        });
+    if (!title || typeof title !== "string" || !title.trim()) {
+      return res.status(400).json({
+        message: "Task title is required"
+      });
     }
 
-    tasks.splice(index, 1);
-
-    res.status(200).json({
-        message: "Task deleted successfully"
+    const task = await Task.create({
+      title: title.trim(),
+      description,
+      completed,
+      priority
     });
 
+    cache.del("all_tasks");
+
+    return res.status(201).json({
+      message: "Task created successfully",
+      task
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message: "Failed to create task",
+      error: error.message
+    });
+  }
 });
 
+// UPDATE a task
+router.put("/:id", authenticate, async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    if (!/^[a-fA-F0-9]{24}$/.test(id)) {
+      return res.status(400).json({ message: "Invalid task ID" });
+    }
+
+    const { title, description, completed, priority } = req.body;
+
+    if (!title || typeof title !== "string" || !title.trim()) {
+      return res.status(400).json({
+        message: "Task title is required"
+      });
+    }
+
+    const task = await Task.findByIdAndUpdate(
+      id,
+      {
+        title: title.trim(),
+        description,
+        completed,
+        priority
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    cache.del(["all_tasks", `task_${id}`]);
+
+    return res.status(200).json({
+      message: "Task updated successfully",
+      task
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message: "Failed to update task",
+      error: error.message
+    });
+  }
+});
+
+// DELETE a task
+router.delete("/:id", authenticate, async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    if (!/^[a-fA-F0-9]{24}$/.test(id)) {
+      return res.status(400).json({ message: "Invalid task ID" });
+    }
+
+    const task = await Task.findByIdAndDelete(id);
+
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    cache.del(["all_tasks", `task_${id}`]);
+
+    return res.status(200).json({
+      message: "Task deleted successfully"
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Failed to delete task",
+      error: error.message
+    });
+  }
+});
 
 module.exports = router;
