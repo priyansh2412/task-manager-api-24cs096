@@ -62,9 +62,9 @@ router.post("/register", async (req, res) => {
 
 // LOGIN
 router.post("/login", async (req, res) => {
+  
 
     try {
-
         const { email, password } = req.body;
 
         // Validation
@@ -113,12 +113,12 @@ router.post("/login", async (req, res) => {
         });
 
     } catch (error) {
+    console.error("Login failed:", error);
 
-        res.status(500).json({
-            message: error.message
-        });
-
-    }
+    res.status(500).json({
+        message: error.message
+    });
+}
 
 });
 

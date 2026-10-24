@@ -2,7 +2,7 @@ require("dotenv").config();
 
 const express = require("express");
 const mongoose = require("mongoose");
-
+const aiRoutes = require("./routes/aiRoutes");
 const cors = require("cors");
 const app = express();
 const logger = require("./middleware/logger");
@@ -35,7 +35,7 @@ app.use(logger);
 // ==========================
 // Routes
 // ==========================
-
+app.use("/api/ai", aiRoutes);
 app.use("/auth", authRoutes);
 
 app.use("/tasks", taskRoutes);
