@@ -4,6 +4,7 @@ const router = express.Router();
 const app = express();
 const Task = require("../models/Task");
 const cache = require("../utils/cache");
+const taskEvents = require("../events");
 const authenticate = require("../middleware/authMiddleware");
 
 const CACHE_TTL = 60;
@@ -86,6 +87,7 @@ router.get("/:id", authenticate, async (req, res) => {
 });
 
 // CREATE a task
+
 router.post("/", authenticate, async (req, res) => {
   try {
     const { title, description, completed, priority } = req.body;
@@ -103,12 +105,31 @@ router.post("/", authenticate, async (req, res) => {
       priority
     });
 
+    // Invalidate Practical 9 cache
     cache.del("all_tasks");
 
-    return res.status(201).json({
+    // Log when the API response is sent
+    console.log(`[API] Response sent at ${new Date().toISOString()}`);
+
+    // Send response immediately
+    res.status(201).json({
       message: "Task created successfully",
       task
     });
+
+    // Emit the event after sending the response
+    setImmediate(() => {
+      try {
+        taskEvents.emit("task-created", {
+          title: task.title,
+          assignedUser: req.user?.email || "Unassigned",
+          taskId: task._id
+        });
+      } catch (error) {
+        taskEvents.emit("task-notification-error", error);
+      }
+    });
+
   } catch (error) {
     return res.status(400).json({
       message: "Failed to create task",
@@ -116,6 +137,7 @@ router.post("/", authenticate, async (req, res) => {
     });
   }
 });
+
 
 // UPDATE a task
 router.put("/:id", authenticate, async (req, res) => {
@@ -164,25 +186,44 @@ router.put("/:id", authenticate, async (req, res) => {
 });
 
 // DELETE a task
+
 router.delete("/:id", authenticate, async (req, res) => {
   try {
     const id = req.params.id;
 
     if (!/^[a-fA-F0-9]{24}$/.test(id)) {
-      return res.status(400).json({ message: "Invalid task ID" });
+      return res.status(400).json({
+        message: "Invalid task ID"
+      });
     }
 
     const task = await Task.findByIdAndDelete(id);
 
     if (!task) {
-      return res.status(404).json({ message: "Task not found" });
+      return res.status(404).json({
+        message: "Task not found"
+      });
     }
 
+    // Invalidate Practical 9 cache
     cache.del(["all_tasks", `task_${id}`]);
 
-    return res.status(200).json({
+    console.log(`[API] Task deleted response sent at ${new Date().toISOString()}`);
+
+    // Respond before scheduling the notification
+    res.status(200).json({
       message: "Task deleted successfully"
     });
+
+    // Emit task-deleted after the response
+    setImmediate(() => {
+      taskEvents.emit("task-deleted", {
+        title: task.title,
+        assignedUser: req.user?.email || "Unassigned",
+        taskId: task._id
+      });
+    });
+
   } catch (error) {
     return res.status(500).json({
       message: "Failed to delete task",
